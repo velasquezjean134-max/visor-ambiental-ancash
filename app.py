@@ -4,14 +4,14 @@ import folium
 from streamlit_folium import st_folium
 import geopandas as gpd
 import os
+from branca.element import Template, MacroElement # ¡Nueva herramienta para la leyenda!
 
 # 1. Configuración general de la página
 st.set_page_config(page_title="Visor Ambiental Áncash", layout="wide")
 
-# --- MAGIA CSS PARA ELIMINAR ESPACIOS EN BLANCO Y TRADUCIR ---
+# --- MAGIA CSS PARA ELIMINAR ESPACIOS EN BLANCO ---
 st.markdown("""
     <style>
-        /* Forzar a que la página ocupe el 100% real sin márgenes anchos */
         .block-container {
             padding-top: 1rem !important;
             padding-bottom: 0rem !important;
@@ -19,20 +19,15 @@ st.markdown("""
             padding-right: 1rem !important;
             max-width: 100% !important;
         }
-        /* Ocultar el pie de página predeterminado de Streamlit */
         footer {visibility: hidden;}
-        /* Reducir el espacio entre el encabezado y la línea separadora */
         h2 {padding-bottom: 0px !important;}
-        
-        /* OCULTAR EL BOTÓN NATIVO DE "SELECT ALL" EN INGLÉS */
-        div[data-testid="stMultiSelect"] button[aria-label="Select all"] {
-            display: none !important;
-        }
-        div[data-baseweb="select"] span[data-testid="stMultiSelectSelectAll"] {
-            display: none !important;
-        }
     </style>
 """, unsafe_allow_html=True)
+
+# --- MENSAJE DE BIENVENIDA TEMPORAL (TOAST) ---
+if 'bienvenida_mostrada' not in st.session_state:
+    st.toast("👋 Bienvenido, active algunos filtros para poder iniciar a visualizar la información.", icon="👋")
+    st.session_state['bienvenida_mostrada'] = True
 
 # --- 2. ENCABEZADO INSTITUCIONAL CON LOGOS ---
 col_logo1, col_titulo, col_logo2 = st.columns([1.5, 7, 1.5])
@@ -76,23 +71,19 @@ COLUMNA_DIST_GEOJSON = 'DISTRITO'
 provincias_ancash = [str(p).upper().strip() for p in provincias_poly[COLUMNA_PROV_GEOJSON].dropna().unique()]
 distritos_ancash = [str(d).upper().strip() for d in distritos_poly[COLUMNA_DIST_GEOJSON].dropna().unique()]
 
-# 4. Panel Lateral Izquierdo (Filtros y Controles)
+# 4. Panel Lateral Izquierdo (Filtros Nativos)
 st.sidebar.header("Filtros de Búsqueda")
 
 datasets_unicos = sorted([str(t) for t in df['Tipo_Dataset'].unique() if pd.notna(t)])
-datasets = ["Todos"] + datasets_unicos
-dataset_sel = st.sidebar.multiselect("1. Seleccione el Tipo de Información:", datasets, placeholder="Elija uno, varios o Todos...")
+dataset_sel = st.sidebar.multiselect("1. Seleccione el Tipo de Información:", datasets_unicos, placeholder="Elija opciones...")
 
-if "Todos" in dataset_sel: df_filt = df
-elif dataset_sel: df_filt = df[df['Tipo_Dataset'].isin(dataset_sel)]
+if dataset_sel: df_filt = df[df['Tipo_Dataset'].isin(dataset_sel)]
 else: df_filt = df 
 
 cuencas_unicas = sorted([str(c) for c in df_filt['Cuenca'].unique() if pd.notna(c)])
-cuencas = ["Todas"] + cuencas_unicas
-cuencas_sel = st.sidebar.multiselect("2. Seleccione la(s) Cuenca(s):", cuencas, placeholder="Elija una, varias o Todas...")
+cuencas_sel = st.sidebar.multiselect("2. Seleccione la(s) Cuenca(s):", cuencas_unicas, placeholder="Elija opciones...")
 
-if "Todas" in cuencas_sel: cuencas_para_dibujar = cuencas_unicas
-elif cuencas_sel: 
+if cuencas_sel: 
     df_filt = df_filt[df_filt['Cuenca'].isin(cuencas_sel)]
     cuencas_para_dibujar = cuencas_sel
 else: cuencas_para_dibujar = []
@@ -101,11 +92,9 @@ if cuencas_sel: provincias_disponibles = df_filt['Provincia'].unique()
 else: provincias_disponibles = [p for p in df_filt['Provincia'].unique() if pd.notna(p) and str(p).upper().strip() in provincias_ancash]
 
 provincias_unicas = sorted([str(p) for p in provincias_disponibles if pd.notna(p)])
-provincias = ["Todas"] + provincias_unicas
-prov_sel = st.sidebar.multiselect("3. Seleccione la(s) Provincia(s):", provincias, placeholder="Elija una, varias o Todas...")
+prov_sel = st.sidebar.multiselect("3. Seleccione la(s) Provincia(s):", provincias_unicas, placeholder="Elija opciones...")
 
-if "Todas" in prov_sel: prov_para_dibujar = provincias_unicas
-elif prov_sel:
+if prov_sel:
     df_filt = df_filt[df_filt['Provincia'].isin(prov_sel)]
     prov_para_dibujar = prov_sel
 else: prov_para_dibujar = []
@@ -114,11 +103,9 @@ if cuencas_sel or prov_sel: distritos_disponibles = df_filt['Distrito'].unique()
 else: distritos_disponibles = [d for d in df_filt['Distrito'].unique() if pd.notna(d) and str(d).upper().strip() in distritos_ancash]
 
 distritos_unicos = sorted([str(d) for d in distritos_disponibles if pd.notna(d)])
-distritos = ["Todos"] + distritos_unicos
-distrito_sel = st.sidebar.multiselect("4. Seleccione el/los Distrito(s):", distritos, placeholder="Elija uno, varios o Todos...")
+distrito_sel = st.sidebar.multiselect("4. Seleccione el/los Distrito(s):", distritos_unicos, placeholder="Elija opciones...")
 
-if "Todos" in distrito_sel: distritos_para_dibujar = distritos_unicos
-elif distrito_sel:
+if distrito_sel:
     df_filt = df_filt[df_filt['Distrito'].isin(distrito_sel)]
     distritos_para_dibujar = distrito_sel
 else: distritos_para_dibujar = []
@@ -126,13 +113,11 @@ else: distritos_para_dibujar = []
 filtros_activos = bool(dataset_sel) or bool(cuencas_sel) or bool(prov_sel) or bool(distrito_sel)
 
 st.sidebar.markdown("---")
-# INTERRUPTOR PARA EL PANEL DERECHO (Inicia apagado para dar protagonismo al mapa)
 ver_panel = st.sidebar.toggle("📂 Activar Panel Derecho de Detalles", value=False)
 
 # --- DIVISIÓN DE PANTALLA CONDICIONAL ---
-if ver_panel:
-    col_mapa, col_panel = st.columns([3, 1])
-else:
+if ver_panel: col_mapa, col_panel = st.columns([3, 1])
+else: 
     col_mapa = st.container()
     col_panel = None
 
@@ -148,7 +133,6 @@ with col_mapa:
     ).add_to(mapa)
     folium.TileLayer('OpenStreetMap', name='Vista de Google Maps', overlay=False).add_to(mapa)
 
-    # Polígonos
     folium.GeoJson(ancash_poly, name="Límite Departamental Áncash", style_function=lambda x: {'fillColor': 'transparent', 'color': '#333333', 'weight': 2, 'dashArray': '5, 5'}).add_to(mapa)
 
     if cuencas_para_dibujar:
@@ -165,6 +149,38 @@ with col_mapa:
         distrito_sel_upper = [str(d).upper().strip() for d in distritos_para_dibujar]
         distrito_filtrado = distritos_poly[distritos_poly[COLUMNA_DIST_GEOJSON].fillna('').str.upper().str.strip().isin(distrito_sel_upper)]
         if not distrito_filtrado.empty: folium.GeoJson(distrito_filtrado, name="Distritos", style_function=lambda x: {'fillColor': '#2ca02c', 'color': '#2ca02c', 'weight': 2, 'fillOpacity': 0.25}).add_to(mapa)
+
+    # --- LEYENDA DINÁMICA ---
+    leyenda_items = ""
+    if cuencas_para_dibujar:
+        leyenda_items += '&nbsp;<i style="background:#0068c9; width: 12px; height: 12px; float: left; margin-top: 4px; margin-right: 8px; opacity: 0.4; border: 1px solid #0068c9;"></i> Cuencas<br>'
+    if prov_para_dibujar:
+        leyenda_items += '&nbsp;<i style="background:#ff7f0e; width: 12px; height: 12px; float: left; margin-top: 4px; margin-right: 8px; opacity: 0.4; border: 1px solid #ff7f0e;"></i> Provincias<br>'
+    if distritos_para_dibujar:
+        leyenda_items += '&nbsp;<i style="background:#2ca02c; width: 12px; height: 12px; float: left; margin-top: 4px; margin-right: 8px; opacity: 0.4; border: 1px solid #2ca02c;"></i> Distritos<br>'
+    
+    if filtros_activos:
+        if leyenda_items != "": leyenda_items += '<hr style="margin: 5px 0px;">'
+        leyenda_items += '<div style="margin-bottom: 3px;"><b>Puntos de Monitoreo:</b></div>'
+        leyenda_items += '&nbsp;<i style="background:#ff7f0e; border-radius: 50%; width: 10px; height: 10px; float: left; margin-top: 4px; margin-right: 8px;"></i> OEFA<br>'
+        leyenda_items += '&nbsp;<i style="background:#2ca02c; border-radius: 50%; width: 10px; height: 10px; float: left; margin-top: 4px; margin-right: 8px;"></i> INAIGEM<br>'
+        leyenda_items += '&nbsp;<i style="background:#0068c9; border-radius: 50%; width: 10px; height: 10px; float: left; margin-top: 4px; margin-right: 8px;"></i> Otras Entidades<br>'
+
+    # Solo agregamos la leyenda al mapa si hay algo que mostrar en ella
+    if leyenda_items != "":
+        template = f"""
+        {{% macro html(this, kwargs) %}}
+        <div style="position: fixed; bottom: 30px; left: 30px; width: auto; min-width: 150px; height: auto; 
+                    border:2px solid grey; z-index:9999; font-size:13px;
+                    background-color:white; opacity: 0.9; padding: 10px; border-radius: 5px;">
+        <h4 style="margin-top: 0px; margin-bottom: 5px; font-size: 14px;"><b>Leyenda</b></h4>
+        {leyenda_items}
+        </div>
+        {{% endmacro %}}
+        """
+        macro = MacroElement()
+        macro._template = Template(template)
+        mapa.get_root().add_child(macro)
 
     # Puntos
     capa_puntos = folium.FeatureGroup(name="Puntos de Monitoreo")
@@ -184,12 +200,9 @@ with col_mapa:
 
     folium.LayerControl(position='topright', collapsed=False).add_to(mapa)
 
-    if not filtros_activos:
-        st.info("Bienvenido, active algunos filtros para poder iniciar a visualizar la información")
-    elif len(df_filt) > 4000:
+    if len(df_filt) > 4000 and filtros_activos:
         st.warning("⚠️ Mostrando solo 4,000 puntos. Usa los filtros para mayor precisión.")
 
-    # Aumentamos la altura a 800px para que cubra casi toda la pantalla verticalmente
     mapa_interactivo = st_folium(mapa, use_container_width=True, height=800, returned_objects=["last_object_clicked"])
 
 # --- PANEL DERECHO CONDICIONAL ---
