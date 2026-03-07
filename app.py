@@ -3,12 +3,46 @@ import pandas as pd
 import folium
 from streamlit_folium import st_folium
 import geopandas as gpd
+import os
 
 # 1. Configuración general de la página
 st.set_page_config(page_title="Visor Ambiental Áncash", layout="wide")
-st.title("Sistema de Información Ambiental Regional - SICAR")
 
-# 2. Cargar Datos y Polígonos
+# --- MAGIA CSS PARA ELIMINAR ESPACIOS EN BLANCO ---
+st.markdown("""
+    <style>
+        /* Forzar a que la página ocupe el 100% real sin márgenes anchos */
+        .block-container {
+            padding-top: 1rem !important;
+            padding-bottom: 0rem !important;
+            padding-left: 1rem !important;
+            padding-right: 1rem !important;
+            max-width: 100% !important;
+        }
+        /* Ocultar el pie de página predeterminado de Streamlit */
+        footer {visibility: hidden;}
+        /* Reducir el espacio entre el encabezado y la línea separadora */
+        h2 {padding-bottom: 0px !important;}
+    </style>
+""", unsafe_allow_html=True)
+
+# --- 2. ENCABEZADO INSTITUCIONAL CON LOGOS ---
+col_logo1, col_titulo, col_logo2 = st.columns([1.5, 7, 1.5])
+
+with col_logo1:
+    if os.path.exists("logo_izquierdo.png"): st.image("logo_izquierdo.png", use_container_width=True)
+    else: st.markdown("<div style='text-align: center; color: #ccc; border: 1px dashed #ccc; padding: 10px;'>Logo Izquierdo</div>", unsafe_allow_html=True)
+
+with col_titulo:
+    st.markdown("<h2 style='text-align: center; margin-top: 0px;'>Sistema de Información Ambiental Regional - SICAR</h2>", unsafe_allow_html=True)
+
+with col_logo2:
+    if os.path.exists("logo_derecho.png"): st.image("logo_derecho.png", use_container_width=True)
+    else: st.markdown("<div style='text-align: center; color: #ccc; border: 1px dashed #ccc; padding: 10px;'>Logo Derecho</div>", unsafe_allow_html=True)
+
+st.markdown("---") 
+
+# 3. Cargar Datos y Polígonos
 @st.cache_data
 def load_data():
     df = pd.read_csv("Datos_Visor_Ancash.csv", low_memory=False) 
@@ -34,7 +68,7 @@ COLUMNA_DIST_GEOJSON = 'DISTRITO'
 provincias_ancash = [str(p).upper().strip() for p in provincias_poly[COLUMNA_PROV_GEOJSON].dropna().unique()]
 distritos_ancash = [str(d).upper().strip() for d in distritos_poly[COLUMNA_DIST_GEOJSON].dropna().unique()]
 
-# 3. Panel Lateral Izquierdo (Filtros)
+# 4. Panel Lateral Izquierdo (Filtros y Controles)
 st.sidebar.header("Filtros de Búsqueda")
 
 datasets_unicos = sorted([str(t) for t in df['Tipo_Dataset'].unique() if pd.notna(t)])
@@ -83,20 +117,27 @@ else: distritos_para_dibujar = []
 
 filtros_activos = bool(dataset_sel) or bool(cuencas_sel) or bool(prov_sel) or bool(distrito_sel)
 
-# --- DIVISIÓN DE PANTALLA PRINCIPAL ---
-col_mapa, col_panel = st.columns([3, 1])
+st.sidebar.markdown("---")
+# INTERRUPTOR PARA EL PANEL DERECHO (Inicia apagado para dar protagonismo al mapa)
+ver_panel = st.sidebar.toggle("📂 Activar Panel Derecho de Detalles", value=False)
+
+# --- DIVISIÓN DE PANTALLA CONDICIONAL ---
+if ver_panel:
+    col_mapa, col_panel = st.columns([3, 1])
+else:
+    col_mapa = st.container()
+    col_panel = None
 
 # --- CONSTRUCCIÓN DEL MAPA ---
 with col_mapa:
     mapa = folium.Map(location=[-9.52, -77.52], zoom_start=8, tiles=None)
 
-    # 1. Mapas Base (RESTAURADOS)
+    # Mapas Base
     folium.TileLayer('CartoDB positron', name='Mapa base').add_to(mapa)
     folium.TileLayer(
         tiles='https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
         attr='Esri', name='Vista satelital', overlay=False
     ).add_to(mapa)
-    # ¡Aquí regresó el mapa de calles!
     folium.TileLayer('OpenStreetMap', name='Vista de Google Maps', overlay=False).add_to(mapa)
 
     # Polígonos
@@ -123,7 +164,7 @@ with col_mapa:
         limite_puntos = df_filt.head(4000)
         for idx, row in limite_puntos.iterrows():
             if pd.notna(row.get('Y')) and pd.notna(row.get('X')):
-                html_popup = f"<b>{row.get('Tipo_Dataset', '')}</b><br>Clic para ver detalles en el panel derecho."
+                html_popup = f"<b>{row.get('Tipo_Dataset', '')}</b><br>Active el Panel Derecho y haga clic para detalles."
                 color_punto = "#ff7f0e" if "OEFA" in str(row.get('Entidad')) else "#2ca02c" if "INAIGEM" in str(row.get('Entidad')) else "#0068c9"
                 
                 folium.CircleMarker(
@@ -140,60 +181,60 @@ with col_mapa:
     elif len(df_filt) > 4000:
         st.warning("⚠️ Mostrando solo 4,000 puntos. Usa los filtros para mayor precisión.")
 
-    mapa_interactivo = st_folium(mapa, width=None, height=650, returned_objects=["last_object_clicked"])
+    # Aumentamos la altura a 800px para que cubra casi toda la pantalla verticalmente
+    mapa_interactivo = st_folium(mapa, use_container_width=True, height=800, returned_objects=["last_object_clicked"])
 
-# --- PANEL DERECHO (Información, Descarga y Detalles del Punto) ---
-with col_panel:
-    st.markdown("### Panel de Resumen")
-    
-    if filtros_activos:
-        st.info(f" **{len(df_filt)}** registros encontrados en tu búsqueda.")
+# --- PANEL DERECHO CONDICIONAL ---
+if col_panel is not None:
+    with col_panel:
+        st.markdown("### Panel de Resumen")
         
-        # 2. Lógica de Descarga Optimizada (LIMPIEZA DE COLUMNAS VACÍAS)
-        # .dropna(axis=1, how='all') elimina las columnas donde TODOS los valores son nulos/vacíos
-        df_export = df_filt.dropna(axis=1, how='all')
-        csv = df_export.to_csv(index=False).encode('utf-8-sig')
-        
-        st.download_button(
-            label="Descargar Base Filtrada (CSV)",
-            data=csv,
-            file_name='datos_visor_filtrados.csv',
-            mime='text/csv',
-            use_container_width=True
-        )
-        
-        st.markdown("---")
-        st.markdown("### Detalle del Punto")
-        
-        if mapa_interactivo and mapa_interactivo.get("last_object_clicked"):
-            lat_clic = mapa_interactivo["last_object_clicked"]["lat"]
-            lon_clic = mapa_interactivo["last_object_clicked"]["lng"]
+        if filtros_activos:
+            st.info(f" **{len(df_filt)}** registros encontrados en tu búsqueda.")
             
-            df_temp = df_filt.copy()
-            df_temp['distancia_al_clic'] = (df_temp['Y'] - lat_clic)**2 + (df_temp['X'] - lon_clic)**2
-            punto_mas_cercano_idx = df_temp['distancia_al_clic'].idxmin()
-            distancia_min = df_temp.loc[punto_mas_cercano_idx, 'distancia_al_clic']
+            df_export = df_filt.dropna(axis=1, how='all')
+            csv = df_export.to_csv(index=False).encode('utf-8-sig')
             
-            if distancia_min < 0.05:
-                punto = df_temp.loc[punto_mas_cercano_idx]
+            st.download_button(
+                label="Descargar Base Filtrada (CSV)",
+                data=csv,
+                file_name='datos_visor_filtrados.csv',
+                mime='text/csv',
+                use_container_width=True
+            )
+            
+            st.markdown("---")
+            st.markdown("### Detalle del Punto")
+            
+            if mapa_interactivo and mapa_interactivo.get("last_object_clicked"):
+                lat_clic = mapa_interactivo["last_object_clicked"]["lat"]
+                lon_clic = mapa_interactivo["last_object_clicked"]["lng"]
                 
-                st.write(f"**Tipo:** {punto.get('Tipo_Dataset', '-')}")
-                st.write(f"**Entidad:** {punto.get('Entidad', '-')}")
-                st.write(f"**Cuenca:** {punto.get('Cuenca', '-')}")
-                st.write(f"**Provincia:** {punto.get('Provincia', '-')}")
-                st.write(f"**Distrito:** {punto.get('Distrito', '-')}")
+                df_temp = df_filt.copy()
+                df_temp['distancia_al_clic'] = (df_temp['Y'] - lat_clic)**2 + (df_temp['X'] - lon_clic)**2
+                punto_mas_cercano_idx = df_temp['distancia_al_clic'].idxmin()
+                distancia_min = df_temp.loc[punto_mas_cercano_idx, 'distancia_al_clic']
                 
-                with st.expander("➕ Ver Más Información Específica"):
-                    campos_excluidos = ['Tipo_Dataset', 'Entidad', 'Cuenca', 'Provincia', 'Distrito', 'X', 'Y', 'distancia_al_clic']
+                if distancia_min < 0.05:
+                    punto = df_temp.loc[punto_mas_cercano_idx]
                     
-                    for columna in punto.index:
-                        if columna not in campos_excluidos:
-                            valor = punto[columna]
-                            if pd.notna(valor) and str(valor).strip() != "":
-                                st.write(f"**{columna}:** {valor}")
+                    st.write(f"**Tipo:** {punto.get('Tipo_Dataset', '-')}")
+                    st.write(f"**Entidad:** {punto.get('Entidad', '-')}")
+                    st.write(f"**Cuenca:** {punto.get('Cuenca', '-')}")
+                    st.write(f"**Provincia:** {punto.get('Provincia', '-')}")
+                    st.write(f"**Distrito:** {punto.get('Distrito', '-')}")
+                    
+                    with st.expander("➕ Ver Más Información Específica"):
+                        campos_excluidos = ['Tipo_Dataset', 'Entidad', 'Cuenca', 'Provincia', 'Distrito', 'X', 'Y', 'distancia_al_clic']
+                        
+                        for columna in punto.index:
+                            if columna not in campos_excluidos:
+                                valor = punto[columna]
+                                if pd.notna(valor) and str(valor).strip() != "":
+                                    st.write(f"**{columna}:** {valor}")
+                else:
+                    st.write("Haz clic sobre un círculo en el mapa para cargar su información.")
             else:
-                st.write("Haz clic sobre un círculo en el mapa para cargar su información.")
+                st.write("Selecciona filtros y haz clic en un punto del mapa para inspeccionarlo.")
         else:
-            st.write("Selecciona filtros y haz clic en un punto del mapa para inspeccionarlo.")
-    else:
-        st.write("Activa algún filtro a la izquierda para comenzar.")
+            st.write("Activa algún filtro a la izquierda para comenzar.")
