@@ -8,7 +8,7 @@ import os
 # 1. Configuración general de la página
 st.set_page_config(page_title="Visor Ambiental Áncash", layout="wide")
 
-# --- MAGIA CSS PARA ELIMINAR ESPACIOS EN BLANCO ---
+# --- MAGIA CSS PARA ELIMINAR ESPACIOS EN BLANCO Y TRADUCIR ---
 st.markdown("""
     <style>
         /* Forzar a que la página ocupe el 100% real sin márgenes anchos */
@@ -23,6 +23,14 @@ st.markdown("""
         footer {visibility: hidden;}
         /* Reducir el espacio entre el encabezado y la línea separadora */
         h2 {padding-bottom: 0px !important;}
+        
+        /* OCULTAR EL BOTÓN NATIVO DE "SELECT ALL" EN INGLÉS */
+        div[data-testid="stMultiSelect"] button[aria-label="Select all"] {
+            display: none !important;
+        }
+        div[data-baseweb="select"] span[data-testid="stMultiSelectSelectAll"] {
+            display: none !important;
+        }
     </style>
 """, unsafe_allow_html=True)
 
